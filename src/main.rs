@@ -1,4 +1,6 @@
-use actix_web::{web, App, HttpServer, HttpResponse, Error, error};
+use actix_web::{dev, web, http, App, HttpServer, HttpResponse, Error, error};
+use actix_web::middleware::{errhandlers::ErrorHandlers, errhandlers::ErrorHandlerResponse};
+use actix_files as fs;
 use tera::Tera;
 
 async fn index(tmpl: web::Data<Tera>) -> Result<HttpResponse, Error> {
@@ -12,13 +14,26 @@ async fn index(tmpl: web::Data<Tera>) -> Result<HttpResponse, Error> {
     Ok(HttpResponse::Ok().content_type("text/html").body(view))
 }
 
+fn not_found<B>(res: dev::ServiceResponse<B>) -> actix_web::Result<ErrorHandlerResponse<B>> {
+    let new_resp = fs::NamedFile::open("static/errors/404.html")?
+        .set_status_code(res.status())
+        .into_response(res.request())?;
+    Ok(ErrorHandlerResponse::Response(
+        res.into_response(new_resp.into_body()),
+    ))
+}
+
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     HttpServer::new( || {
+
+        let error_handlers = ErrorHandlers::new()
+            .handler(http::StatusCode::NOT_FOUND, not_found);
         let templates = Tera::new("templates/**/*").unwrap();
 
         App::new()
             .data(templates)
+            .wrap(error_handlers)
             .service(web::resource("/").to(index))
     })
         .bind("localhost:3000")
